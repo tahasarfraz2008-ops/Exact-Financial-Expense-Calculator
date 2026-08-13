@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Exact Financial Arithmetic — Ledger Tape Demo</title>
+<link rel="preconnect" href="https://cdnjs.cloudflare.com" />
+<style>
+  @import url('https://cdnjs.cloudflare.com/ajax/libs/source-serif-pro/3.6.0/source-serif-pro.min.css');
+
+  :root{
+    --paper: #F1ECE0;
+    --paper-dark: #E4DCC8;
+    --ink: #1F2A24;
+    --ledger-green: #1B3B2F;
+    --ledger-green-light: #2E5A48;
+    --loss-red: #A6362C;
+    --gain-teal: #2B6E63;
+    --rule: #C9BFA5;
+  }
+
+  *{box-sizing:border-box;}
+
+  body{
+    margin:0;
+    background:var(--ledger-green);
+    background-image:
+      radial-gradient(circle at 15% 10%, rgba(255,255,255,0.05), transparent 40%),
+      radial-gradient(circle at 85% 90%, rgba(255,255,255,0.04), transparent 45%);
+    color:var(--ink);
+    font-family: 'Courier New', ui-monospace, SFMono-Regular, Menlo, monospace;
+    min-height:100vh;
+    display:flex;
+    justify-content:center;
+    padding: 48px 20px 80px;
+  }
+
+  .page{
+    max-width: 760px;
+    width:100%;
+  }
+
+  header{
+    text-align:center;
+    color:var(--paper);
+    margin-bottom:32px;
+  }
+
+  header .eyebrow{
+    letter-spacing:0.22em;
+    font-size:11px;
+    text-transform:uppercase;
+    opacity:0.65;
+    margin-bottom:10px;
+  }
+
+  header h1{
+    font-family: 'Source Serif Pro', Georgia, serif;
+    font-weight:600;
+    font-size: clamp(28px, 4vw, 40px);
+    margin:0 0 10px;
+    line-height:1.15;
+  }
+
+  header p{
+    font-family: 'Source Serif Pro', Georgia, serif;
+    font-size:15px;
+    max-width:520px;
+    margin:0 auto;
+    opacity:0.8;
+    line-height:1.5;
+  }
+
+  /* --- the tape --- */
+  .tape{
+    background:var(--paper);
+    position:relative;
+    padding: 28px 34px 40px;
+    box-shadow: 0 30px 60px rgba(0,0,0,0.35);
+  }
+
+  .tape::before, .tape::after{
+    content:"";
+    position:absolute;
+    left:0; right:0;
+    height:14px;
+    background:
+      radial-gradient(circle at 10px 7px, transparent 7px, var(--ledger-green) 7.5px) ,
+      var(--paper);
+    background-size: 20px 14px;
+    background-repeat: repeat-x;
+  }
+  .tape::before{ top:-7px; }
+  .tape::after{ bottom:-7px; transform: rotate(180deg); }
+
+  .row-label{
+    font-size:10px;
+    letter-spacing:0.15em;
+    text-transform:uppercase;
+    color:var(--ledger-green);
+    opacity:0.6;
+    margin: 0 0 6px;
+  }
+
+  .entry-row{
+    display:flex;
+    gap:12px;
+    align-items:center;
+    padding: 14px 0;
+    border-bottom:1px dashed var(--rule);
+  }
+  .entry-row:last-child{ border-bottom:none; }
+
+  input[type="text"]{
+    flex:1;
+    font: inherit;
+    font-size:20px;
+    padding:10px 12px;
+    border:1px solid var(--rule);
+    background:#fff;
+    color:var(--ink);
+  }
+  input[type="text"]:focus{
+    outline:2px solid var(--ledger-green-light);
+    outline-offset:1px;
+  }
+
+  button{
+    font: inherit;
+    font-size:13px;
+    letter-spacing:0.06em;
+    text-transform:uppercase;
+    padding:11px 18px;
+    background:var(--ledger-green);
+    color:var(--paper);
+    border:none;
+    cursor:pointer;
+  }
+  button:hover{ background:var(--ledger-green-light); }
+  button:focus-visible{ outline:2px solid var(--loss-red); outline-offset:2px; }
+  button.secondary{
+    background:transparent;
+    color:var(--ledger-green);
+    border:1px solid var(--ledger-green);
+  }
+  button.secondary:hover{ background:rgba(27,59,47,0.08); }
+
+  select{
+    font: inherit;
+    font-size:13px;
+    padding:9px 10px;
+    border:1px solid var(--rule);
+    background:#fff;
+  }
+
+  .readout{
+    margin-top:6px;
+  }
+  .readout .line{
+    display:flex;
+    justify-content:space-between;
+    font-size:15px;
+    padding:5px 0;
+  }
+  .readout .line .k{ opacity:0.55; }
+  .readout .line .v{ font-weight:700; }
+  .readout .v.exact{ color:var(--gain-teal); }
+  .readout .v.approx{ color:var(--loss-red); }
+
+  .status-stamp{
+    display:inline-block;
+    margin-top:10px;
+    padding:4px 10px;
+    font-size:11px;
+    letter-spacing:0.14em;
+    text-transform:uppercase;
+    border:2px solid var(--gain-teal);
+    color:var(--gain-teal);
+    transform: rotate(-2deg);
+  }
+  .status-stamp.bad{
+    border-color:var(--loss-red);
+    color:var(--loss-red);
+  }
+
+  .compare{
+    margin-top:26px;
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap:16px;
+  }
+  @media (max-width:560px){ .compare{ grid-template-columns:1fr; } }
+
+  .compare .col{
+    border:1px solid var(--rule);
+    padding:16px;
+  }
+  .compare .col h3{
+    margin:0 0 10px;
+    font-size:12px;
+    letter-spacing:0.1em;
+    text-transform:uppercase;
+  }
+  .compare .col.bad h3{ color:var(--loss-red); }
+  .compare .col.good h3{ color:var(--gain-teal); }
+  .compare .col .math{ font-size:18px; }
+  .compare .col .verdict{ font-size:12px; margin-top:10px; opacity:0.75; }
+
+  footer{
+    text-align:center;
+    color:var(--paper);
+    opacity:0.55;
+    font-size:12px;
+    margin-top:28px;
+    font-family: 'Source Serif Pro', Georgia, serif;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <div class="eyebrow">Exact Financial Arithmetic Engine</div>
+    <h1>The ledger never rounds mid-sum.</h1>
+    <p>Type an expression like <code>100 / 3</code>. Every line on this tape is kept as an exact fraction until the moment you explicitly ask for cents.</p>
+  </header>
+
+  <div class="tape">
+    <div class="row-label">Enter expression</div>
+    <div class="entry-row">
+      <input id="expr" type="text" value="100 / 3" aria-label="Arithmetic expression" />
+      <button id="calcBtn">Post entry</button>
+    </div>
+
+    <div class="readout" id="readout" aria-live="polite"></div>
+
+    <div class="row-label" style="margin-top:22px;">Carry the result forward</div>
+    <div class="entry-row">
+      <button class="secondary" id="times3Exact">&times; 3, staying exact</button>
+      <select id="roundDigits">
+        <option value="2">Round to 2dp first</option>
+        <option value="0">Round to 0dp first</option>
+        <option value="4">Round to 4dp first</option>
+      </select>
+      <button class="secondary" id="times3Rounded">&times; 3, after rounding</button>
+    </div>
+
+    <div class="compare" id="compare" hidden>
+      <div class="col bad">
+        <h3>Rounded first</h3>
+        <div class="math" id="badMath"></div>
+        <div class="verdict" id="badVerdict"></div>
+      </div>
+      <div class="col good">
+        <h3>Exact throughout</h3>
+        <div class="math" id="goodMath"></div>
+        <div class="verdict" id="goodVerdict"></div>
+      </div>
+    </div>
+  </div>
+
+  <footer>No floats were harmed in the making of this tape. Fractions in, fractions out.</footer>
+</div>
+
+<script>
+// A tiny, self-contained BigInt-backed fraction type -- mirrors the
+// Python ExactNumber(Fraction) used server-side, so this page can
+// demonstrate the same "never round mid-calculation" idea with zero
+// backend dependency.
+function gcdBig(a, b) { a = a < 0n ? -a : a; b = b < 0n ? -b : b; while (b) { [a, b] = [b, a % b]; } return a; }
+
+class Frac {
+  constructor(n, d = 1n) {
+    n = BigInt(n); d = BigInt(d);
+    if (d === 0n) throw new Error("Division by zero.");
+    if (d < 0n) { n = -n; d = -d; }
+    const g = gcdBig(n, d) || 1n;
+    this.n = n / g; this.d = d / g;
+  }
+  add(o) { return new Frac(this.n * o.d + o.n * this.d, this.d * o.d); }
+  sub(o) { return new Frac(this.n * o.d - o.n * this.d, this.d * o.d); }
+  mul(o) { return new Frac(this.n * o.n, this.d * o.d); }
+  div(o) { return new Frac(this.n * o.d, this.d * o.n); }
+  toString() { return this.d === 1n ? this.n.toString() : `${this.n}/${this.d}`; }
+  toDecimalString(digits) {
+    const neg = this.n < 0n;
+    let n = neg ? -this.n : this.n;
+    const whole = n / this.d;
+    let rem = n % this.d;
+    let out = whole.toString();
+    if (digits > 0) {
+      out += ".";
+      for (let i = 0; i < digits; i++) {
+        rem *= 10n;
+        out += (rem / this.d).toString();
+        rem = rem % this.d;
+      }
+    }
+    return (neg ? "-" : "") + out;
+  }
+  isTerminatingWithin(digits) {
+    // reduced denominator must only have 2s and 5s as factors, within `digits`
+    let d = this.d, a = 0, b = 0;
+    while (d % 2n === 0n) { d /= 2n; a++; }
+    while (d % 5n === 0n) { d /= 5n; b++; }
+    return d === 1n && Math.max(a, b) <= digits;
+  }
+}
+
+function parseNumberToken(text) {
+  if (text.includes(".")) {
+    const [whole, frac = ""] = text.split(".");
+    const denom = 10n ** BigInt(frac.length);
+    const numer = BigInt((whole || "0") + frac || "0");
+    return new Frac(numer, denom);
+  }
+  return new Frac(BigInt(text));
+}
+
+// Minimal safe recursive-descent parser -- same grammar as the Python engine.
+function evaluateExpression(expr) {
+  let i = 0;
+  const s = expr.replace(/\s+/g, "");
+  if (!s) throw new Error("Expression must not be empty.");
+
+  function peek() { return s[i]; }
+  function isDigit(c) { return c >= "0" && c <= "9"; }
+
+  function parseExpression() {
+    let result = parseTerm();
+    while (peek() === "+" || peek() === "-") {
+      const op = s[i++];
+      const rhs = parseTerm();
+      result = op === "+" ? result.add(rhs) : result.sub(rhs);
+    }
+    return result;
+  }
+  function parseTerm() {
+    let result = parseFactor();
+    while (peek() === "*" || peek() === "/") {
+      const op = s[i++];
+      const rhs = parseFactor();
+      result = op === "*" ? result.mul(rhs) : result.div(rhs);
+    }
+    return result;
+  }
+  function parseFactor() {
+    if (peek() === "-") { i++; const f = parseFactor(); return new Frac(0n).sub(f); }
+    if (peek() === "(") {
+      i++;
+      const r = parseExpression();
+      if (peek() !== ")") throw new Error("Unbalanced parentheses.");
+      i++;
+      return r;
+    }
+    let start = i;
+    while (i < s.length && (isDigit(peek()) || peek() === ".")) i++;
+    if (start === i) throw new Error(`Unexpected character '${peek() || "end"}' in expression.`);
+    return parseNumberToken(s.slice(start, i));
+  }
+
+  const result = parseExpression();
+  if (i !== s.length) throw new Error("Unexpected trailing characters.");
+  return result;
+}
+
+let lastExact = null;
+
+function renderReadout(expr, exact) {
+  const digits = 24;
+  const isRepeating = !exact.isTerminatingWithin(digits);
+  const display = exact.toDecimalString(digits) + (isRepeating ? "…" : "");
+  const rounded2 = exact.toDecimalString(2);
+  const readout = document.getElementById("readout");
+  readout.innerHTML = `
+    <div class="line"><span class="k">Expression</span><span class="v">${expr}</span></div>
+    <div class="line"><span class="k">Exact value</span><span class="v exact">${exact.toString()}</span></div>
+    <div class="line"><span class="k">Decimal display</span><span class="v">${display}</span></div>
+    <div class="line"><span class="k">Rounded, 2dp</span><span class="v">${rounded2}</span></div>
+  `;
+}
+
+document.getElementById("calcBtn").addEventListener("click", () => {
+  try {
+    const expr = document.getElementById("expr").value;
+    lastExact = evaluateExpression(expr);
+    renderReadout(expr, lastExact);
+    document.getElementById("compare").hidden = true;
+  } catch (e) {
+    document.getElementById("readout").innerHTML =
+      `<div class="line"><span class="k">Error</span><span class="v approx">${e.message}</span></div>`;
+  }
+});
+
+function runComparison() {
+  if (!lastExact) document.getElementById("calcBtn").click();
+  if (!lastExact) return;
+
+  const digits = parseInt(document.getElementById("roundDigits").value, 10);
+  const roundedStr = lastExact.toDecimalString(digits);
+  const roundedFrac = parseNumberToken(roundedStr);
+  const badResult = roundedFrac.mul(new Frac(3n));
+  const goodResult = lastExact.mul(new Frac(3n));
+
+  document.getElementById("compare").hidden = false;
+  document.getElementById("badMath").textContent =
+    `${roundedStr} × 3 = ${badResult.toDecimalString(digits)}`;
+  document.getElementById("goodMath").textContent =
+    `${lastExact.toString()} × 3 = ${goodResult.toString()}`;
+
+  const badVerdict = document.getElementById("badVerdict");
+  const goodVerdict = document.getElementById("goodVerdict");
+  badVerdict.textContent = "Rounding before the multiply loses a fraction of a cent.";
+  goodVerdict.textContent = "The exact fraction survives every operation untouched.";
+}
+
+document.getElementById("times3Rounded").addEventListener("click", runComparison);
+document.getElementById("times3Exact").addEventListener("click", runComparison);
+
+// initial calculation on load
+document.getElementById("calcBtn").click();
+</script>
+</body>
+</html>
